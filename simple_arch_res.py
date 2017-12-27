@@ -8,8 +8,8 @@ def get_model(args):
     reg = args.reg
 
     def RB(x):
-        for _ in range(8):
-            x = SCRES(x, 128, 16)
+        for _ in range(2):
+            x = SCRES(x, 128, 64)
         return x
     
     input_img = Input((3,32,32))
@@ -29,22 +29,16 @@ def get_model(args):
     x = C(x, 128, 3, 2)
 
     x = RB(x)
-    
+
     x = SCL(BN(x))
     x = C(x, 128, 3, 2)
 
-    x = RB(x)
-    
     x = SCL(BN(x))
     x = C(x, 128, 3, 2)
 
-    x = RB(x)
-    
     x = SCL(BN(x))
     x = D(x, 128, 3, 2)
 
-    x = RB(x)
-    
     x = SCL(BN(x))
     x = D(x, 128, 3, 2)
 

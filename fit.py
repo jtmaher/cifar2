@@ -1,10 +1,14 @@
 import argparse
 from data import CIFAR10
-import os
-import tensorflow as tf
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '5'
+from os import mkdir
+from shutil import copy
+from keras.optimizers import Adam
+import numpy as np
+from keras.callbacks import ReduceLROnPlateau, CSVLogger, EarlyStopping, LambdaCallback
+from keras.utils import plot_model
 
-c10 = CIFAR10()
+from visualizer import Visualizer
+from data import AutoFlow
 
 
 parser = argparse.ArgumentParser(description='Fit a model')
@@ -19,47 +23,40 @@ parser.add_argument('--verbose', dest='verbose', default=1, type=int)
 
 args = parser.parse_args()
 
-from os import mkdir
-mkdir(args.output_dir)
+arch = __import__(args.arch_file)
 
+mkdir(args.output_dir)
 
 with open('%s/args' % args.output_dir, 'w') as f:
     f.write(str(vars(args)) + '\n')
 
 
-arch = __import__(args.arch_file)
-from shutil import copy
 copy(args.arch_file + '.py', args.output_dir)
 
 model = arch.get_model(args)
-from keras.optimizers import Adam
 
 model.compile(loss='mean_squared_error',
               optimizer=Adam(lr=args.lr))
 
-from visualizer import Visualizer
-
-import numpy as np
-from keras.callbacks import ReduceLROnPlateau, CSVLogger, EarlyStopping, LambdaCallback
+c10 = CIFAR10()
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=1e-7)
 early_stopper = EarlyStopping(min_delta=0.001, patience=10)
 csv_logger = CSVLogger(args.output_dir + '/train.csv', append=False)
-vis=Visualizer(args.output_dir, model, c10)
+vis = Visualizer(args.output_dir, model, c10)
 visuals = LambdaCallback(on_epoch_end=lambda epoch, logs: vis.visualize(epoch,logs))
 
-from keras.utils import plot_model
+
 plot_model(model, to_file='%s/model.png' % args.output_dir, show_shapes=True)
 
-from data import AutoFlow
 
-batch_size = args.batch_size
-num_epoch = args.num_epochs
 model.fit_generator(
-    AutoFlow(c10.datagen_flow(batch_size, use_class=False)),
-    steps_per_epoch=c10.train_x.shape[0] // batch_size,
+    AutoFlow(c10.datagen_flow(args.batch_size, use_class=False)),
+    steps_per_epoch=c10.train_x.shape[0] // args.batch_size,
     validation_data=(c10.test_n_x, c10.test_n_x),
-    epochs=num_epoch, verbose=args.verbose, max_queue_size=100,
+    epochs=args.num_epochs,
+    verbose=args.verbose,
+    max_queue_size=100,
     callbacks=[visuals, lr_reducer, early_stopper, csv_logger])
 
 model.save( '%s/model.hdf5' % args.output_dir)
