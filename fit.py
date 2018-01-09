@@ -6,6 +6,8 @@ from keras.optimizers import Adam
 import numpy as np
 from keras.callbacks import ReduceLROnPlateau, CSVLogger, EarlyStopping, LambdaCallback
 from keras.utils import plot_model
+from keras.utils.training_utils import multi_gpu_model
+
 
 from visualizer import Visualizer
 from data import AutoFlow
@@ -20,6 +22,9 @@ parser.add_argument('--lr', dest='lr', default=1e-4, type=float)
 parser.add_argument('--batch-size', dest='batch_size', default=128, type=int)
 parser.add_argument('--num_epochs', dest='num_epochs', default=250, type=int)
 parser.add_argument('--verbose', dest='verbose', default=1, type=int)
+parser.add_argument('--classify', dest='classify', default=False, type=bool)
+parser.add_argument('--multigpu', dest='multigpu', default=False, type=bool)
+
 
 args = parser.parse_args()
 
@@ -34,29 +39,51 @@ with open('%s/args' % args.output_dir, 'w') as f:
 copy(args.arch_file + '.py', args.output_dir)
 
 model = arch.get_model(args)
+plot_model(model, to_file='%s/model.png' % args.output_dir, show_shapes=True)
 
-model.compile(loss='mean_squared_error',
-              optimizer=Adam(lr=args.lr))
+if args.multigpu:
+    model = multi_gpu_model(model, 2)
+
 
 c10 = CIFAR10()
 
 lr_reducer = ReduceLROnPlateau(factor=np.sqrt(0.1), cooldown=0, patience=5, min_lr=1e-7)
 early_stopper = EarlyStopping(min_delta=0.001, patience=10)
 csv_logger = CSVLogger(args.output_dir + '/train.csv', append=False)
-vis = Visualizer(args.output_dir, model, c10)
-visuals = LambdaCallback(on_epoch_end=lambda epoch, logs: vis.visualize(epoch,logs))
 
+if args.classify == False:
+    model.compile(loss='mean_squared_error',
+                  optimizer=Adam(lr=args.lr))
 
-plot_model(model, to_file='%s/model.png' % args.output_dir, show_shapes=True)
+    vis = Visualizer(args.output_dir, model, c10)
+    visuals = LambdaCallback(on_epoch_end=lambda epoch, logs: vis.visualize(epoch,logs))
 
+    model.fit_generator(
+        AutoFlow(c10.datagen_flow(args.batch_size, use_class=False)),
+        steps_per_epoch=c10.train_x.shape[0] // args.batch_size,
+        validation_data=(c10.test_n_x, c10.test_n_x),
+        epochs=args.num_epochs,
+        verbose=args.verbose,
+        max_queue_size=100,
+        callbacks=[visuals, lr_reducer, early_stopper, csv_logger])
+else:
 
-model.fit_generator(
-    AutoFlow(c10.datagen_flow(args.batch_size, use_class=False)),
-    steps_per_epoch=c10.train_x.shape[0] // args.batch_size,
-    validation_data=(c10.test_n_x, c10.test_n_x),
-    epochs=args.num_epochs,
-    verbose=args.verbose,
-    max_queue_size=100,
-    callbacks=[visuals, lr_reducer, early_stopper, csv_logger])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=Adam(lr=args.lr),
+                  metrics=['accuracy'])
+
+    model.fit_generator(
+        c10.datagen_flow(args.batch_size, use_class=True),
+        steps_per_epoch=c10.train_x.shape[0] // args.batch_size,
+        validation_data=(c10.test_n_x, c10.test_y),
+        epochs=args.num_epochs,
+        verbose=args.verbose,
+        max_queue_size=100,
+        callbacks=[lr_reducer, early_stopper, csv_logger])
+
+    
 
 model.save( '%s/model.hdf5' % args.output_dir)
+
+
+    

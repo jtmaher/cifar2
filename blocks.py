@@ -20,14 +20,14 @@ def C11(x, n, bias=False):
         kernel_regularizer=l2(reg),
         use_bias=bias)(x)
 
-def C(x, n, sz=3, st=1):
+def C(x, n, sz=3, st=1, bias=False):
     return Conv2D(
         n, (sz, sz),
         strides=(st,st),
         padding='same',
         kernel_initializer=init,
         kernel_regularizer=l2(reg),
-        use_bias=False,
+        use_bias=bias,
     )(x)
 
 
@@ -44,6 +44,10 @@ def D(x, n, sz=3, st=1):
 
 def CL(x, thresh=2.5):
     return Lambda(lambda x: clip(x, -thresh, thresh))(x)
+
+
+def LCL(x, slope=1e-2):
+    return Lambda(lambda x: (1-slope) * CL(x) + slope*x)(x)
 
 def SCL(x, thresh=2.5):
     return Lambda(lambda x: thresh * tanh(x / thresh))(x)
@@ -68,6 +72,17 @@ def CRES(xin, in_filt, hidden_filt):
     x = add([x, x_1])
     return x
 
+def LCRES(xin, in_filt, hidden_filt):
+    x_1 = x = LCL(BN(xin))
+    x = C11(x, hidden_filt)
+    x = LCL(BN(x))
+    x = C(x, hidden_filt)
+    x = LCL(BN(x))
+    x = C11(x, in_filt, bias=True)
+    x = add([x, x_1])
+    return x
+
+
 def SCRES(xin, in_filt, hidden_filt):
     x_1 = x = SCL(BN(xin))
     x = C11(x, hidden_filt)
@@ -75,6 +90,17 @@ def SCRES(xin, in_filt, hidden_filt):
     x = C(x, hidden_filt)
     x = SCL(BN(x))
     x = C11(x, in_filt, bias=True)
+    x = add([x, x_1])
+    return x
+
+
+def BRES(xin, in_filt, hidden_filt):
+    x_1 = x = BN(xin)
+    x = C11(x, hidden_filt, bias= True)
+    x = BN(x)
+    x = C(x, hidden_filt, bias=True)
+    x = BN(x)
+    x = C(x, in_filt, bias=True)
     x = add([x, x_1])
     return x
 
