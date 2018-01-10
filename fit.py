@@ -84,6 +84,4 @@ else:
     
 
 model.save( '%s/model.hdf5' % args.output_dir)
-
-
     

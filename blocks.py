@@ -49,8 +49,8 @@ def CL(x, thresh=2.5):
 def LCL(x, slope=1e-2):
     return Lambda(lambda x: (1-slope) * CL(x) + slope*x)(x)
 
-def SCL(x, thresh=2.5):
-    return Lambda(lambda x: thresh * tanh(x / thresh))(x)
+def SCL(x, thresh=2.5, name=None):
+    return Lambda(lambda x: thresh * tanh(x / thresh), name=name)(x)
 
 def RES(xin, in_filt, hidden_filt):
     x_1 = x = R(BN(xin))
